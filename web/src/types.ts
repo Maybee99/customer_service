@@ -1,9 +1,4 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-export enum ScreenType {
+﻿export enum ScreenType {
   MAIN_CHAT = 'MAIN_CHAT',
   HISTORY = 'HISTORY',
   KNOWLEDGE = 'KNOWLEDGE',
@@ -16,6 +11,23 @@ export interface Message {
   content: string;
   timestamp: string;
   sourcePdf?: string;
+}
+
+export interface StepEvent {
+  type: 'thinking' | 'tool' | 'result' | 'reflect';
+  content: string;
+}
+
+export interface Conversation {
+  id: number;
+  session_id: string;
+  user_id: string;
+  title: string;
+  preview: string;
+  message_count: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SidebarChat {
@@ -32,7 +44,21 @@ export interface HistoryItem {
   time: string;
   preview: string;
   category: string;
-  status: string; // e.g. '当前对话', '对话中', '已解决'
+  status: string;
+}
+
+export interface KnowledgeFileItem {
+  id: number;
+  original_filename: string;
+  file_type: string;
+  file_size: number;
+  category: string;
+  parse_mode: string;
+  chunk_count: number;
+  status: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface KBDocument {
@@ -41,7 +67,7 @@ export interface KBDocument {
   category: string;
   size: string;
   updatedAt: string;
-  status: '已索引' | '解析中' | '同步中';
+  status: string;
 }
 
 export interface UserProfile {

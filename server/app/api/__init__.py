@@ -1,1 +1,1 @@
- from app.api import chat, conversations, knowledge
+from ..api import chat, conversations, knowledge

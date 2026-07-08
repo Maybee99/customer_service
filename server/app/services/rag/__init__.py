@@ -1,1 +1,1 @@
- from app.services.rag.llm_client import LLMClient
+from .llm_client import LLMClient

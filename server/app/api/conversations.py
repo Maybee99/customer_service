@@ -1,51 +1,67 @@
- from fastapi import APIRouter, Depends, HTTPException, Query
- from sqlalchemy.orm import Session
- from app.models.database import get_db
- from app.models.conversation import Conversation
- from app.models.message import Message
- from app.utils.logger import logger
- from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from ..models.database import get_db
+from ..models.conversation import Conversation
+from ..models.message import Message
+from ..utils.logger import logger
+from typing import Optional
 
- router = APIRouter()
-
-
- @router.get("/conversations")
- async def list_conversations(
-     user_id: Optional[str] = Query(None),
-     limit: int = Query(50),
-     page: int = Query(1),
-     db: Session = Depends(get_db),
- ):
-     try:
-         query = db.query(Conversation).order_by(Conversation.updated_at.desc())
-         if user_id:
-             query = query.filter(Conversation.user_id == user_id)
-         total = query.count()
-         conversations = query.offset((page - 1) * limit).limit(limit).all()
-         return {
-             "conversations": [c.to_dict() for c in conversations],
-             "total": total,
-             "page": page,
-             "limit": limit,
-         }
-     except Exception as e:
-         logger.error(f"Failed to list conversations: {e}")
-         raise HTTPException(status_code=500, detail=str(e))
+router = APIRouter()
 
 
- @router.get("/conversations/{conversation_id}")
- async def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
-     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-     if not conv:
-         raise HTTPException(status_code=404, detail="Conversation not found")
-     return conv.to_dict(with_messages=True)
+@router.get("/conversations")
+async def list_conversations(
+    user_id: Optional[str] = Query(None),
+    limit: int = Query(50),
+    page: int = Query(1),
+    db: Session = Depends(get_db),
+):
+    try:
+        query = db.query(Conversation).order_by(Conversation.updated_at.desc())
+        if user_id:
+            query = query.filter(Conversation.user_id == user_id)
+        total = query.count()
+        conversations = query.offset((page - 1) * limit).limit(limit).all()
+        return {
+            "conversations": [c.to_dict() for c in conversations],
+            "total": total,
+            "page": page,
+            "limit": limit,
+        }
+    except Exception as e:
+        logger.error(f"Failed to list conversations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
- @router.post("/conversations/{conversation_id}/close")
- async def close_conversation(conversation_id: int, db: Session = Depends(get_db)):
-     conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-     if not conv:
-         raise HTTPException(status_code=404, detail="Conversation not found")
-     conv.status = "closed"
-     db.commit()
-     return {"status": "closed"}
+@router.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv.to_dict(with_messages=True)
+
+
+@router.post("/conversations/{conversation_id}/close")
+async def close_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    conv.status = "closed"
+    db.commit()
+    return {"status": "closed"}
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
+    """Delete a conversation and all its messages (CASCADE)."""
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    session_id = conv.session_id
+    db.delete(conv)
+    db.commit()
+
+    logger.info(f"[Conversations API] Deleted conversation #{conversation_id} "
+                f"(session={session_id})")
+    return {"status": "deleted", "id": conversation_id}
