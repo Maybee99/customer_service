@@ -50,16 +50,16 @@ export default function Header({ activeScreen, onNavigate, titleOverride }: Head
             <span>知识库</span>
           </button>
 
-          <button 
-            onClick={() => onNavigate(ScreenType.SETTINGS, 'none')} 
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeScreen === ScreenType.SETTINGS 
-                ? 'text-[#2563EB] bg-[#EFF6FF] font-bold' 
-                : 'text-[#475569] hover:bg-[#F8FAFC]'
-            }`}
-          >
-            <span>设置</span>
-          </button>
+          {/*<button */}
+          {/*  onClick={() => onNavigate(ScreenType.SETTINGS, 'none')} */}
+          {/*  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${*/}
+          {/*    activeScreen === ScreenType.SETTINGS */}
+          {/*      ? 'text-[#2563EB] bg-[#EFF6FF] font-bold' */}
+          {/*      : 'text-[#475569] hover:bg-[#F8FAFC]'*/}
+          {/*  }`}*/}
+          {/*>*/}
+          {/*  <span>设置</span>*/}
+          {/*</button>*/}
         </nav>
       </div>
 
