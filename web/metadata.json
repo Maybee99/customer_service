@@ -1,0 +1,6 @@
+{
+  "name": "AI 智能客服",
+  "description": "企业级 AI 智能客服，包含智能对话、历史记录管理、知识库文档库和偏好设置系统。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

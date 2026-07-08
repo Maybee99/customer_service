@@ -1,0 +1,15 @@
+ __pycache__/
+ *.py[cod]
+ *.egg-info/
+ .env
+ venv/
+ dist/
+ build/
+ .pytest_cache/
+ data/milvus/*
+ data/mysql/*
+ data/redis/*
+ !data/knowledge_store/.gitkeep
+ *.pkl
+ .DS_Store
+ *.log
