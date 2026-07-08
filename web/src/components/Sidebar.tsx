@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Plus, Search, MoreHorizontal, Sparkles, Trash2, X } from 'lucide-react';
+import { Plus, Search, MoreHorizontal, Sparkles, Trash2, X, BookOpen } from 'lucide-react';
 import { ScreenType, Conversation } from '../types';
 
 interface SidebarProps {
@@ -9,6 +9,8 @@ interface SidebarProps {
   onSelectConversation: (conv: Conversation) => void;
   onNewChat: () => void;
   onDeleteConversation: (id: number) => void;
+  kbCount?: number;
+  kbProcessing?: number;
 }
 
 function formatTime(iso: string): string {
@@ -26,7 +28,7 @@ function formatTime(iso: string): string {
   return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
 }
 
-export default function Sidebar({ activeScreen, onNavigate, conversations, onSelectConversation, onNewChat, onDeleteConversation }: SidebarProps) {
+export default function Sidebar({ activeScreen, onNavigate, conversations, onSelectConversation, onNewChat, onDeleteConversation, kbCount, kbProcessing }: SidebarProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handleNewChat = () => {
@@ -75,6 +77,31 @@ export default function Sidebar({ activeScreen, onNavigate, conversations, onSel
         </div>
       </div>
       <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar no-scrollbar pb-4">
+        {/* ── Knowledge Base quick status ── */}
+        {kbCount !== undefined && (
+          <a
+            href="#"
+            onClick={(e) => { e.preventDefault(); onNavigate(ScreenType.KNOWLEDGE, 'push'); }}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-[#F8FAFC] transition-colors cursor-pointer mb-3"
+          >
+            <div className="w-8 h-8 rounded-lg bg-[#EFF6FF] flex items-center justify-center">
+              <BookOpen className="w-4 h-4 text-[#3B82F6]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-xs font-semibold text-[#1E293B]">知识库</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] text-[#94A3B8]">{kbCount} 个文档</span>
+                {kbProcessing ? (
+                  <span className="flex items-center gap-0.5 text-[10px] text-amber-500 font-semibold">
+                    <span className="w-1 h-1 bg-amber-500 rounded-full animate-pulse" />
+                    {kbProcessing} 处理中
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </a>
+        )}
+
         {conversations.length === 0 && (
           <p className="text-xs text-[#94A3B8] text-center py-8">暂无历史对话</p>
         )}

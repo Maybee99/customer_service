@@ -38,7 +38,7 @@ function formatTime(iso: string): string {
   return iso.replace('T', ' ').substring(0, 16);
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, progress, progressStep }: { status: string; progress?: number; progressStep?: string }) {
   switch (status) {
     case 'ready':
       return (
@@ -49,9 +49,22 @@ function StatusBadge({ status }: { status: string }) {
     case 'processing':
     case 'uploading':
       return (
-        <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600">
-          <Loader2 className="w-3 h-3 animate-spin" /> 处理中
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-xs font-bold text-amber-600">
+            <Loader2 className="w-3 h-3 animate-spin" /> 处理中
+          </span>
+          {progress !== undefined && progress > 0 && (
+            <div className="w-20 h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+          {progressStep && (
+            <span className="text-[10px] text-slate-400 truncate max-w-[160px]">{progressStep}</span>
+          )}
+        </div>
       );
     case 'failed':
       return (
@@ -124,7 +137,7 @@ export default function KnowledgeBase({ onNavigate }: KnowledgeBaseProps) {
     };
   }, [files, page, selectedCategory, loadFiles]);
 
-  const handleUpload = async (file: File, category: string) => {
+  const handleUpload = async (file: File, category: string): Promise<number> => {
     const result = await uploadKnowledgeFile(file, category);
     // Reload to show the new file with "processing" status
     setPage(1);
@@ -146,6 +159,7 @@ export default function KnowledgeBase({ onNavigate }: KnowledgeBaseProps) {
         await loadFiles(1, selectedCategory);
       }
     }, 2000);
+    return result.id;
   };
 
   const handleDelete = async (id: number, name: string) => {
@@ -365,7 +379,7 @@ export default function KnowledgeBase({ onNavigate }: KnowledgeBaseProps) {
                                 {formatTime(file.updated_at || file.created_at)}
                               </td>
                               <td className="px-6 py-4">
-                                <StatusBadge status={file.status} />
+                                <StatusBadge status={file.status} progress={file.progress} progressStep={file.progress_step} />
                               </td>
                               <td className="px-6 py-4 text-right">
                                 <div className="flex items-center justify-end gap-1">

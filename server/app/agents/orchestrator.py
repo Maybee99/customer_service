@@ -93,7 +93,8 @@ STREAMING_ANSWER_PROMPT = """你是一个有帮助的智能客服助手。根据
 - 保持友好、专业的语气
 - 使用 Markdown 格式输出，合理使用标题、列表、加粗等提高可读性
 - 直接回答用户的问题，不要提及内部过程（如"根据知识库"等）
-- 不要在回答中标注来源，来源信息由系统自动添加"""
+- 不要在回答中标注来源，来源信息由系统自动添加
+- 如果上下文中包含操作截图（![...](url)格式），请在对应步骤说明中引用这些截图，让用户图文对照操作"""
 
 
 def _build_streaming_messages(state: AgentState, history: list = None) -> list:
@@ -142,6 +143,21 @@ def _build_streaming_messages(state: AgentState, history: list = None) -> list:
             messages.append({"role": "user", "content": f"[工具返回结果]: {result}"})
 
     return messages
+
+
+def _extract_images(state: AgentState) -> list:
+    """Extract image URLs from tool call results as fallback."""
+    import re
+    seen = set()
+    imgs = []
+    for tc in state.get("tool_calls_history", []):
+        for m in re.finditer(r'!\[(.*?)\]\(([^)]+)\)', str(tc.get("result", ""))):
+            page = m.group(1)
+            url = m.group(2)
+            if url not in seen:
+                seen.add(url)
+                imgs.append({"page": page, "url": url})
+    return imgs
 
 
 def _extract_sources(state: AgentState) -> list:
@@ -373,6 +389,19 @@ class AgentOrchestrator:
                 answer_buffer.append(fallback)
                 for i in range(0, len(fallback), 8):
                     yield {"type": "answer_token", "data": {"content": fallback[i:i+8]}}
+
+        # ── Images: LLM should include them from context, but if not, append ──
+        full_answer = "".join(answer_buffer)
+        if '![' not in full_answer:
+            images = _extract_images(final_state)
+            if images:
+                imgs_md = ''.join(
+                    f"\n![{img['page']}]({img['url']})" for img in images
+                )
+                logger.info(f"[Orchestrator] LLM missed {len(images)} images, appending")
+                answer_buffer.append(imgs_md)
+                for ch in imgs_md:
+                    yield {"type": "answer_token", "data": {"content": ch}}
 
         # Append source citations with confidence scores + clickable links
         sources = _extract_sources(final_state)

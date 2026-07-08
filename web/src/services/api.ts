@@ -13,7 +13,8 @@ export async function sendChatMessageStream(
   onStep: (step: StepEvent) => void,
   onAnswerToken: (token: string) => void,
   onDone: (data: { session_id: string; needs_human: boolean }) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  onReplaceAnswer?: (fullContent: string) => void
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/chat/stream`, {
     method: 'POST',
@@ -56,6 +57,11 @@ export async function sendChatMessageStream(
             case 'answer_token':
               if (data.content) {
                 onAnswerToken(data.content);
+              }
+              break;
+            case 'replace_answer':
+              if (data.content && onReplaceAnswer) {
+                onReplaceAnswer(data.content);
               }
               break;
             case 'done':
@@ -145,5 +151,14 @@ export async function deleteKnowledgeFile(id: number): Promise<{
 export async function reindexKnowledgeFile(id: number): Promise<{ id: number; status: string }> {
   const res = await fetch(`${API_BASE}/knowledge/files/${id}/reindex`, { method: 'POST' });
   if (!res.ok) throw new Error('Reindex failed');
+  return res.json();
+}
+
+export async function fetchKnowledgeFileProgress(id: number): Promise<{
+  id: number; status: string; progress: number;
+  progress_step: string; error_message?: string;
+}> {
+  const res = await fetch(`${API_BASE}/knowledge/files/${id}/progress`);
+  if (!res.ok) throw new Error('Fetch progress failed');
   return res.json();
 }

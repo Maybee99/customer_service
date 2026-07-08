@@ -13,6 +13,8 @@ class KnowledgeFile(Base):
     chunk_count = Column(Integer, default=0)
     image_count = Column(Integer, default=0)
     status = Column(Enum("uploading", "processing", "ready", "failed"), default="uploading")
+    progress = Column(Integer, default=0)
+    progress_step = Column(String(100), default="")
     error_message = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now(), index=True)
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

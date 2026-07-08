@@ -6,7 +6,7 @@ import MainChat from './components/MainChat';
 import HistoryPanel from './components/HistoryPanel';
 import KnowledgeBase from './components/KnowledgeBase';
 import SettingsPanel from './components/SettingsPanel';
-import { sendChatMessageStream, fetchConversations, fetchConversationDetail, deleteConversation } from './services/api';
+import { sendChatMessageStream, fetchConversations, fetchConversationDetail, deleteConversation, fetchKnowledgeFiles } from './services/api';
 
 type TransitionDirection = 'push' | 'push_back' | 'none';
 
@@ -24,6 +24,7 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [convLoading, setConvLoading] = useState(false);
   const [activeConvId, setActiveConvId] = useState<number | null>(null);
+  const [kbStats, setKbStats] = useState<{ count: number; processing: number } | null>(null);
   const userId = 'u1';
   const userName = '测试用户';
 
@@ -37,6 +38,21 @@ export default function App() {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // KB stats polling
+  useEffect(() => {
+    const loadKbStats = () => {
+      fetchKnowledgeFiles({ page_size: 1 }).then(data => {
+        const processing = data.files?.filter((f: any) =>
+          f.status === 'processing' || f.status === 'uploading'
+        ).length ?? 0;
+        setKbStats({ count: data.total ?? 0, processing });
+      }).catch(() => {});
+    };
+    loadKbStats();
+    const timer = setInterval(loadKbStats, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleNewChat = useCallback(() => {
     setCurrentSessionId(genSessionId());
@@ -66,7 +82,6 @@ export default function App() {
             const updated = { ...last, content: last.content + token };
             return [...prev.slice(0, -1), updated];
           }
-          // Shouldn't happen since we create placeholder, but be safe
           return [...prev, { id: nextId('ai'), sender: 'ai', content: token, timestamp: '' }];
         }),
         (done) => {
@@ -77,13 +92,23 @@ export default function App() {
           setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last && last.sender === 'ai' && last.content === '') {
-              // Replace empty placeholder with error
               const updated = { ...last, content: '抱歉，出错了: ' + err };
               return [...prev.slice(0, -1), updated];
             }
             return [...prev, { id: nextId('ai'), sender: 'ai', content: '抱歉，出错了: ' + err, timestamp: '' }];
           });
           setIsStreaming(false);
+        },
+        (fullContent) => {
+          // Replace answer with interspersed version (text + images woven together)
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last && last.sender === 'ai') {
+              const updated = { ...last, content: fullContent };
+              return [...prev.slice(0, -1), updated];
+            }
+            return prev;
+          });
         }
       );
     } catch (e: any) {
@@ -180,6 +205,8 @@ export default function App() {
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
         onDeleteConversation={handleDeleteConversation}
+        kbCount={kbStats?.count ?? 0}
+        kbProcessing={kbStats?.processing ?? 0}
       />
       <main className="flex-1 h-full relative overflow-hidden flex flex-col">
         <AnimatePresence mode="wait" custom={transitionDirection}>

@@ -165,6 +165,23 @@ async def list_files(
     }
 
 
+# ── File detail + progress ────────────────────────────────
+
+@router.get("/files/{file_id}/progress")
+async def get_file_progress(file_id: int, db: Session = Depends(get_db)):
+    """Poll file processing progress (for upload progress bar)."""
+    record = db.query(KnowledgeFile).filter(KnowledgeFile.id == file_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return {
+        "id": record.id,
+        "status": record.status,
+        "progress": record.progress or 0,
+        "progress_step": record.progress_step or "",
+        "error_message": record.error_message,
+    }
+
+
 # ── File detail ────────────────────────────────────────────
 
 @router.get("/files/{file_id}")
@@ -216,8 +233,8 @@ async def delete_file(file_id: int, db: Session = Depends(get_db)):
     filename = record.original_filename
     chunk_count = record.chunk_count
 
-    # ① Delete from Milvus & rebuild BM25
-    ok = importer.delete_knowledge(file_hash)
+    # ① Delete from Milvus, page images & rebuild BM25
+    ok = importer.delete_knowledge(file_hash, original_filename=filename)
 
     # ② Delete from disk (best-effort, find by original filename in storage dir)
     try:
@@ -294,6 +311,30 @@ async def reindex_file(
     }
 
 
+# ── View / Download images (rendered by ImageParser) ──────
+
+@router.get("/images/{filename}")
+async def serve_image(filename: str):
+    """Serve a page image rendered from an image-heavy PDF.
+
+    Images are stored in data/images/ by ImageParser.
+    Returns PNG with caching headers.
+    """
+    from ..services.image_parser import ImageParser
+
+    img_parser = ImageParser()
+    img_path = os.path.join(img_parser.image_dir, filename)
+
+    if not os.path.isfile(img_path):
+        raise HTTPException(status_code=404, detail="图片不存在")
+
+    return FileResponse(
+        img_path,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 # ── Helpers ────────────────────────────────────────────────
 
 def _serialize_file(record: KnowledgeFile) -> dict:
@@ -307,6 +348,8 @@ def _serialize_file(record: KnowledgeFile) -> dict:
         "parse_mode": record.parse_mode,
         "chunk_count": record.chunk_count or 0,
         "status": record.status,
+        "progress": record.progress or 0,
+        "progress_step": record.progress_step or "",
         "error_message": record.error_message,
         "created_at": record.created_at.isoformat() if record.created_at else None,
         "updated_at": record.updated_at.isoformat() if record.updated_at else None,

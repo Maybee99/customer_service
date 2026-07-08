@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     data_dir: str = os.path.join(_PROJECT_ROOT, "data")
     chunk_size: int = 512
     chunk_overlap: int = 128
-    top_k_retrieval: int = 5
-    rerank_top_k: int = 3
+    top_k_retrieval: int = 10
+    rerank_top_k: int = 5
     vector_weight: float = 0.7
     bm25_weight: float = 0.3
 

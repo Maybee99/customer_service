@@ -13,6 +13,7 @@ from ..services.document_parser import DocumentParser
 from ..services.text_chunker import TextChunker
 from ..models.database import SessionLocal
 from ..models.knowledge_file import KnowledgeFile
+from ..models.knowledge_image import KnowledgeImage
 from ..config import get_settings
 from ..utils.logger import logger
 
@@ -63,31 +64,88 @@ class KnowledgeImporter:
             category = getattr(record, 'category', '') or ''
 
             logger.info(f"[KnowledgeImporter] Processing file #{file_id}: "
-                         f"{original_name} (type={file_type}, category={category})")
+                         f"{original_name} (type={file_type}, category={category}) "
+                         f"path={file_path}")
 
-            # ② Parse document → text
-            try:
-                text = self.parser.parse_file(file_path, file_type)
-            except (ValueError, FileNotFoundError) as e:
-                self._fail(db, record, str(e))
-                return {"status": "failed", "error_message": str(e)}
-            except Exception as e:
-                self._fail(db, record, f"文档解析失败: {str(e)[:500]}")
-                return {"status": "failed", "error_message": f"解析失败: {str(e)[:200]}"}
+            # ② Parse document → text (or image-based for low-text PDFs)
+            chunks_meta = None
+            image_pages = None
 
-            if not text or not text.strip():
-                self._fail(db, record, "文档无文字内容")
-                return {"status": "failed", "error_message": "文档无文字内容"}
+            if file_type == 'pdf':
+                # Check text density — route image-heavy PDFs to Qwen-VL
+                try:
+                    from ..services.image_parser import ImageParser
+                    img_parser = ImageParser()
+                    _, text_density = img_parser.get_text_density(file_path)
+                    logger.info(
+                        f"[KnowledgeImporter] Text density: {text_density:.0f} "
+                        f"chars/page (threshold=100)"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"[KnowledgeImporter] Density check failed ({e}), "
+                        f"falling back to text parsing"
+                    )
+                    text_density = 999  # Can't check → assume text-heavy
 
-            # ③ Chunk text
-            chunks_meta = self.chunker.chunk_with_metadata(
-                text, source_file=original_name, category=category
-            )
+                # Threshold: < 100 chars/page → screenshot-style PDF
+                if text_density < 100:
+                    logger.info(
+                        f"[KnowledgeImporter] Low text density ({text_density:.0f} "
+                        f"chars/page) → using Qwen-VL image parsing"
+                    )
+                    try:
+                        progress_cb = lambda pct, step: self._update_progress(
+                            db, record, pct, step
+                        )
+                        image_pages = img_parser.parse_pdf(
+                            file_path, file_hash=record.file_hash,
+                            file_id=record.id,
+                            progress_callback=progress_cb,
+                        )
+                        if image_pages:
+                            chunks_meta = [
+                                {
+                                    "content": p["text"],
+                                    "chunk_index": p["page_num"],
+                                    "source_file": original_name,
+                                    "category": category,
+                                }
+                                for p in image_pages
+                            ]
+                            # Set image info on record
+                            record.image_count = len(image_pages)
+                    except Exception as e:
+                        logger.error(f"[KnowledgeImporter] Image parsing failed: {e}")
+                        # Fall through to text parsing
+
+            # Normal text path (fallback or text-heavy PDF)
+            if chunks_meta is None:
+                try:
+                    text = self.parser.parse_file(file_path, file_type)
+                except (ValueError, FileNotFoundError) as e:
+                    self._fail(db, record, str(e))
+                    return {"status": "failed", "error_message": str(e)}
+                except Exception as e:
+                    self._fail(db, record, f"文档解析失败: {str(e)[:500]}")
+                    return {"status": "failed", "error_message": f"解析失败: {str(e)[:200]}"}
+
+                if not text or not text.strip():
+                    self._fail(db, record, "文档无文字内容")
+                    return {"status": "failed", "error_message": "文档无文字内容"}
+
+                self._update_progress(db, record, 25, "文档解析完成")
+
+                # ③ Chunk text
+                chunks_meta = self.chunker.chunk_with_metadata(
+                    text, source_file=original_name, category=category
+                )
             if not chunks_meta:
                 self._fail(db, record, "文档分块后无有效内容")
                 return {"status": "failed", "error_message": "文档分块后无有效内容"}
 
             logger.info(f"[KnowledgeImporter] Got {len(chunks_meta)} chunks")
+            self._update_progress(db, record, 40, "文档分块完成")
 
             # ④ Generate embeddings (batch of 10)
             contents = [c["content"] for c in chunks_meta]
@@ -101,8 +159,16 @@ class KnowledgeImporter:
                 self._fail(db, record, "向量生成数量与分块数不一致")
                 return {"status": "failed", "error_message": "向量生成数量不一致"}
 
-            # ⑤ Insert into Milvus
+            self._update_progress(db, record, 60, "向量生成完成")
+
+            # ⑤ Delete old chunks before inserting new ones
             file_hash = record.file_hash
+            try:
+                self.milvus.delete_by_file_hash(file_hash)
+                logger.info(f"[KnowledgeImporter] Cleaned old chunks for hash={file_hash[:16]}")
+            except Exception as e:
+                logger.warning(f"[KnowledgeImporter] Clean old chunks failed: {e}")
+
             source_files = [c["source_file"] for c in chunks_meta]
             categories = [c["category"] for c in chunks_meta]
             chunk_indices = [c["chunk_index"] for c in chunks_meta]
@@ -121,14 +187,20 @@ class KnowledgeImporter:
                 self._fail(db, record, f"向量存储失败: {str(e)[:200]}")
                 return {"status": "failed", "error_message": f"向量存储失败: {str(e)[:200]}"}
 
+            self._update_progress(db, record, 80, "向量存储完成")
+
             # ⑥ Rebuild BM25 index
             try:
                 self.rebuild_bm25_index()
             except Exception as e:
                 logger.warning(f"[KnowledgeImporter] BM25 rebuild failed (non-fatal): {e}")
 
+            self._update_progress(db, record, 95, "索引构建完成")
+
             # ⑦ Update status → ready
             record.status = "ready"
+            record.progress = 100
+            record.progress_step = "处理完成"
             record.chunk_count = len(chunks_meta)
             db.commit()
 
@@ -150,8 +222,8 @@ class KnowledgeImporter:
         finally:
             db.close()
 
-    def delete_knowledge(self, file_hash: str) -> bool:
-        """Remove all chunks for a file from Milvus and rebuild BM25."""
+    def delete_knowledge(self, file_hash: str, original_filename: str = "") -> bool:
+        """Remove all chunks for a file from Milvus, delete page images, rebuild BM25."""
         try:
             self.milvus.delete_by_file_hash(file_hash)
             logger.info(f"[KnowledgeImporter] Deleted Milvus chunks: hash={file_hash}")
@@ -159,12 +231,61 @@ class KnowledgeImporter:
             logger.error(f"[KnowledgeImporter] Milvus delete failed: {e}")
             return False
 
+        # ── Delete page images (generated by ImageParser) ──
+        self._delete_page_images(file_hash)
+
         try:
             self.rebuild_bm25_index()
         except Exception as e:
             logger.warning(f"[KnowledgeImporter] BM25 rebuild after delete failed: {e}")
 
         return True
+
+    @staticmethod
+    def _delete_page_images(file_hash: str):
+        """Delete page images belonging to a specific file from disk and DB.
+
+        ImageParser saves images as: data/images/{file_hash}_p{N}.png
+        This method removes all matching images from disk and the
+        knowledge_images table.
+        """
+        import glob
+        image_dir = os.path.join(settings.data_dir, "images")
+        deleted = 0
+
+        # ── Delete from disk ──
+        if os.path.isdir(image_dir):
+            patterns = [
+                os.path.join(image_dir, f"{file_hash}_p*.png"),
+                os.path.join(image_dir, f"{file_hash[:16]}_p*.png"),
+                os.path.join(image_dir, f"{file_hash[:32]}_p*.png"),
+            ]
+            for pattern in patterns:
+                for img_path in glob.glob(pattern):
+                    try:
+                        os.remove(img_path)
+                        deleted += 1
+                    except OSError as e:
+                        logger.warning(f"[KnowledgeImporter] Failed to delete image {img_path}: {e}")
+
+        # ── Delete from knowledge_images table ──
+        try:
+            db2 = SessionLocal()
+            count = db2.query(KnowledgeImage).filter(
+                KnowledgeImage.file_hash == file_hash
+            ).delete()
+            db2.commit()
+            if count > 0:
+                logger.info(f"[KnowledgeImporter] Deleted {count} image metadata "
+                            f"records for hash={file_hash[:16]}")
+        except Exception as e:
+            logger.warning(f"[KnowledgeImporter] Failed to delete image metadata: {e}")
+        finally:
+            db2.close()
+
+        if deleted > 0:
+            logger.info(f"[KnowledgeImporter] Deleted {deleted} page images from "
+                        f"disk for hash={file_hash[:16]}")
 
     def rebuild_bm25_index(self) -> int:
         """Rebuild BM25 index from all documents in Milvus.
@@ -201,6 +322,16 @@ class KnowledgeImporter:
             logger.info(f"[KnowledgeImporter] BM25 index saved: {len(all_docs)} docs")
             return len(all_docs)
 
+    # ── Progress tracking ───────────────────────────────────
+
+    @staticmethod
+    def _update_progress(db, record, progress: int, step: str):
+        """Update file processing progress visible to the frontend."""
+        if record:
+            record.progress = progress
+            record.progress_step = step
+            db.commit()
+
     # ── Internal helpers ────────────────────────────────────
 
     @staticmethod
@@ -208,6 +339,8 @@ class KnowledgeImporter:
         """Mark a file record as failed."""
         if record:
             record.status = "failed"
+            record.progress = 0
+            record.progress_step = f"失败: {message[:60]}"
             record.error_message = message[:1000]
             db.commit()
         logger.error(f"[KnowledgeImporter] FAILED: {message}")

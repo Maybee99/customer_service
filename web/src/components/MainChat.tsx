@@ -154,6 +154,68 @@ export default function MainChat({ messages, thinkingSteps, isStreaming, onSend,
                                 {children}
                               </a>
                             ),
+                            img: ({ src, alt, node, ...props }) => {
+                              const label = alt && !alt.includes('页截图') ? alt : '';
+                              return (
+                                <span className="block my-2" style={{ maxWidth: 400 }}>
+                                  <span
+                                    className="block border border-[#E2E8F0] rounded-lg overflow-hidden
+                                               cursor-zoom-in hover:shadow-md transition-shadow"
+                                    onClick={(e) => {
+                                      const wrapper = e.currentTarget;
+                                      const img = wrapper.querySelector('img') as HTMLImageElement;
+                                      if (!img) return;
+                                      const isZoomed = img.dataset.zoomed === '1';
+                                      if (isZoomed) {
+                                        img.dataset.zoomed = '0';
+                                        img.style.maxHeight = '300px';
+                                        img.style.maxWidth = '';
+                                        wrapper.style.position = '';
+                                        wrapper.style.inset = '';
+                                        wrapper.style.zIndex = '';
+                                        wrapper.style.background = '';
+                                        wrapper.style.display = '';
+                                        wrapper.style.alignItems = '';
+                                        wrapper.style.justifyContent = '';
+                                        wrapper.style.cursor = '';
+                                        wrapper.style.borderRadius = '';
+                                        wrapper.style.border = '';
+                                        wrapper.style.maxWidth = '';
+                                      } else {
+                                        img.dataset.zoomed = '1';
+                                        img.style.maxHeight = '90vh';
+                                        img.style.maxWidth = '90vw';
+                                        wrapper.style.position = 'fixed';
+                                        wrapper.style.inset = '0';
+                                        wrapper.style.zIndex = '9999';
+                                        wrapper.style.background = 'rgba(0,0,0,0.85)';
+                                        wrapper.style.display = 'flex';
+                                        wrapper.style.alignItems = 'center';
+                                        wrapper.style.justifyContent = 'center';
+                                        wrapper.style.cursor = 'zoom-out';
+                                        wrapper.style.borderRadius = '0';
+                                        wrapper.style.border = 'none';
+                                        wrapper.style.maxWidth = 'none';
+                                      }
+                                    }}
+                                  >
+                                    <img
+                                      src={src}
+                                      alt={label || '操作截图'}
+                                      className="w-full h-auto block"
+                                      loading="lazy"
+                                      style={{ maxHeight: '300px', objectFit: 'contain' }}
+                                      data-zoomed="0"
+                                    />
+                                    {label && (
+                                      <span className="block text-[11px] text-[#64748B] text-center py-1 bg-[#F8FAFC] border-t border-[#E2E8F0]">
+                                        {label}
+                                      </span>
+                                    )}
+                                  </span>
+                                </span>
+                              );
+                            },
                           }}
                         >
                           {msg.content}

@@ -108,11 +108,13 @@ class Reranker:
         """
         payload = {
             "model": self.model,
-            "query": query,
-            "documents": documents,
+            "input": {
+                "query": query,
+                "documents": documents,
+            },
             "parameters": {
-                "return_documents": False,  # We already have documents
-                "top_n": len(documents),    # Score all documents
+                "return_documents": False,
+                "top_n": len(documents),
             },
         }
 
@@ -139,13 +141,11 @@ class Reranker:
 
         data = response.json()
 
-        # Parse response — expects:
-        #   {"results": [
-        #       {"index": 0, "relevance_score": 0.99},
-        #       {"index": 2, "relevance_score": 0.78},
-        #       ...
-        #   ]}
-        results = data.get("results", [])
+        # Parse response — handles both formats:
+        #   {"output": {"results": [...]}}   (DashScope standard)
+        #   {"results": [...]}               (some compatible APIs)
+        output = data.get("output", data)
+        results = output.get("results", [])
         if not results:
             raise RuntimeError(f"Rerank API returned empty results: {data}")
 

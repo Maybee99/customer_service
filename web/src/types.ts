@@ -56,6 +56,8 @@ export interface KnowledgeFileItem {
   parse_mode: string;
   chunk_count: number;
   status: string;
+  progress?: number;
+  progress_step?: string;
   error_message?: string;
   created_at: string;
   updated_at: string;

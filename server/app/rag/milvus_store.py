@@ -104,7 +104,7 @@ class MilvusStore:
             data=[query_embedding],
             limit=top_k,
             search_params={"metric_type": "IP", "params": {"nprobe": 32}},
-            output_fields=["content", "source_file", "category", "chunk_index"],
+            output_fields=["content", "source_file", "category", "chunk_index", "file_hash"],
             filter=filter_expr,
         )
 
@@ -116,6 +116,7 @@ class MilvusStore:
                     "source_file": hit["entity"].get("source_file"),
                     "category": hit["entity"].get("category"),
                     "chunk_index": hit["entity"].get("chunk_index"),
+                    "file_hash": hit["entity"].get("file_hash", ""),
                     "score": hit["distance"],
                     "type": "milvus",
                 })
